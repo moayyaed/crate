@@ -24,6 +24,7 @@ package io.crate.execution.engine.aggregation.impl;
 import io.crate.Streamer;
 import io.crate.breaker.RamAccounting;
 import io.crate.common.MutableLong;
+import io.crate.common.collections.Lists2;
 import io.crate.data.Input;
 import io.crate.execution.engine.aggregation.AggregationFunction;
 import io.crate.execution.engine.aggregation.DocValueAggregator;
@@ -32,9 +33,12 @@ import io.crate.execution.engine.aggregation.impl.templates.SortedNumericDocValu
 import io.crate.expression.symbol.Function;
 import io.crate.expression.symbol.Literal;
 import io.crate.expression.symbol.Symbol;
+import io.crate.expression.symbol.Symbols;
 import io.crate.memory.MemoryManager;
 import io.crate.metadata.NodeContext;
+import io.crate.metadata.Reference;
 import io.crate.metadata.TransactionContext;
+import io.crate.metadata.doc.DocTableInfo;
 import io.crate.metadata.functions.Signature;
 import io.crate.types.ByteType;
 import io.crate.types.DataType;
@@ -46,6 +50,7 @@ import io.crate.types.GeoPointType;
 import io.crate.types.IntegerType;
 import io.crate.types.IpType;
 import io.crate.types.LongType;
+import io.crate.types.ObjectType;
 import io.crate.types.ShortType;
 import io.crate.types.StringType;
 import io.crate.types.TimestampType;
@@ -56,6 +61,7 @@ import org.elasticsearch.index.mapper.MappedFieldType;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 import static io.crate.metadata.functions.TypeVariableConstraint.typeVariable;
@@ -64,15 +70,18 @@ import static io.crate.types.TypeSignature.parseTypeSignature;
 public class CountAggregation extends AggregationFunction<MutableLong, Long> {
 
     public static final String NAME = "count";
+
+    static final DataType<?> RETURN_TYPE = DataTypes.LONG;
+
     public static final Signature SIGNATURE =
         Signature.aggregate(
             NAME,
             parseTypeSignature("V"),
-            DataTypes.LONG.getTypeSignature()
+            RETURN_TYPE.getTypeSignature()
         ).withTypeVariableConstraints(typeVariable("V"));
 
     public static final Signature COUNT_STAR_SIGNATURE =
-        Signature.aggregate(NAME, DataTypes.LONG.getTypeSignature());
+        Signature.aggregate(NAME, RETURN_TYPE.getTypeSignature());
 
     static {
         DataTypes.register(CountAggregation.LongStateType.ID, in -> CountAggregation.LongStateType.INSTANCE);
@@ -103,9 +112,9 @@ public class CountAggregation extends AggregationFunction<MutableLong, Long> {
 
     @Override
     public MutableLong iterate(RamAccounting ramAccounting,
-                             MemoryManager memoryManager,
-                             MutableLong state,
-                             Input... args) {
+                               MemoryManager memoryManager,
+                               MutableLong state,
+                               Input... args) {
         if (!hasArgs || args[0].value() != null) {
             return state.add(1L);
         }
@@ -115,9 +124,9 @@ public class CountAggregation extends AggregationFunction<MutableLong, Long> {
     @Nullable
     @Override
     public MutableLong newState(RamAccounting ramAccounting,
-                              Version indexVersionCreated,
-                              Version minNodeInCluster,
-                              MemoryManager memoryManager) {
+                                Version indexVersionCreated,
+                                Version minNodeInCluster,
+                                MemoryManager memoryManager) {
         ramAccounting.addBytes(LongStateType.INSTANCE.fixedSize());
         return new MutableLong(0L);
     }
@@ -237,43 +246,78 @@ public class CountAggregation extends AggregationFunction<MutableLong, Long> {
         return previousAggState;
     }
 
+    private DocValueAggregator<?> getDocValueAggregator(List<DataType<?>> argumentTypes,
+                                                        List<MappedFieldType> fieldTypes) {
+        switch (argumentTypes.get(0).id()) {
+            case ByteType.ID:
+            case ShortType.ID:
+            case IntegerType.ID:
+            case LongType.ID:
+            case TimestampType.ID_WITH_TZ:
+            case TimestampType.ID_WITHOUT_TZ:
+            case FloatType.ID:
+            case DoubleType.ID:
+            case GeoPointType.ID:
+                return new SortedNumericDocValueAggregator<>(
+                    fieldTypes.get(0).name(),
+                    (ramAccounting, memoryManager, minNodeVersion) -> {
+                        ramAccounting.addBytes(LongStateType.INSTANCE.fixedSize());
+                        return new MutableLong(0L);
+                    },
+                    (values, state) -> state.add(1L)
+                );
+            case IpType.ID:
+            case StringType.ID:
+                return new BinaryDocValueAggregator<>(
+                    fieldTypes.get(0).name(),
+                    (ramAccounting, memoryManager, minNodeVersion) -> {
+                        ramAccounting.addBytes(LongStateType.INSTANCE.fixedSize());
+                        return new MutableLong(0L);
+                    },
+                    (values, state) -> state.add(1L)
+                );
+            default:
+                return null;
+        }
+    }
+
+    @Nullable
     @Override
-    public DocValueAggregator<?> getDocValueAggregator(List<DataType<?>> argumentTypes,
-                                                       List<MappedFieldType> fieldTypes,
+    public DocValueAggregator<?> getDocValueAggregator(List<Symbol> aggregationReferences,
+                                                       java.util.function.Function<List<String>, List<MappedFieldType>> getMappedFieldTypes,
+                                                       DocTableInfo table,
                                                        List<Literal<?>> optionalParams) {
-        if (argumentTypes.size() == 1) {
-            switch (argumentTypes.get(0).id()) {
-                case ByteType.ID:
-                case ShortType.ID:
-                case IntegerType.ID:
-                case LongType.ID:
-                case TimestampType.ID_WITH_TZ:
-                case TimestampType.ID_WITHOUT_TZ:
-                case FloatType.ID:
-                case DoubleType.ID:
-                case GeoPointType.ID:
-                    return new SortedNumericDocValueAggregator<>(
-                        fieldTypes.get(0).name(),
-                        (ramAccounting, memoryManager, minNodeVersion) -> {
-                            ramAccounting.addBytes(LongStateType.INSTANCE.fixedSize());
-                            return new MutableLong(0L);
-                        },
-                        (values, state) -> state.add(1L)
-                    );
-                case IpType.ID:
-                case StringType.ID:
-                    return new BinaryDocValueAggregator<>(
-                        fieldTypes.get(0).name(),
-                        (ramAccounting, memoryManager, minNodeVersion) -> {
-                            ramAccounting.addBytes(LongStateType.INSTANCE.fixedSize());
-                            return new MutableLong(0L);
-                        },
-                        (values, state) -> state.add(1L)
-                    );
-                default:
-                    return null;
+        if (aggregationReferences.size() != 1) {
+            return null;
+        }
+        if (aggregationReferences.get(0).valueType().id() == ObjectType.ID) {
+            //if count on object Type, optimize to count on one of the not-null-subcolumns
+            var allNotNullSubColumns = new ArrayList<>(table.notNullColumns());
+            var aggregationRef = (Reference) aggregationReferences.get(0);
+            for (var notNullCol : allNotNullSubColumns) {
+                //in FCFS basis
+                if (notNullCol.isChildOf(aggregationRef.column())) {
+                    var fieldTypes = getMappedFieldTypes.apply(List.of(notNullCol.fqn()));
+                    var notNullColRef = table.getReference(notNullCol);
+                    if (fieldTypes == null || notNullColRef == null) {
+                        continue;
+                    }
+                    var subColDocValAggregator = getDocValueAggregator(
+                        List.of(notNullColRef.valueType()),
+                        fieldTypes);
+                    if (subColDocValAggregator != null) {
+                        return subColDocValAggregator;
+                    }
+                }
             }
         }
-        return null;
+        var fieldTypes = getMappedFieldTypes.apply(
+            Lists2.map(aggregationReferences, s -> ((Reference) s).column().fqn())
+        );
+        if (fieldTypes == null) {
+            return null;
+        }
+        var argumentTypes = Symbols.typeView(aggregationReferences);
+        return getDocValueAggregator(argumentTypes, fieldTypes);
     }
 }

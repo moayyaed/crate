@@ -97,6 +97,9 @@ Changes
 - Improved the performance of the :ref`hyperloglog_distinct
   <aggregation-hyperloglog-distinct>` aggregation function.
 
+- Improved count aggregations on object types containing not-null constrained
+  inner types by utilizing the inner types' doc-values when available.
+
 Fixes
 =====
 
