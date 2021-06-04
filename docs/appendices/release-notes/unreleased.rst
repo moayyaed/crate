@@ -97,6 +97,11 @@ Changes
 - Improved the performance of the :ref`hyperloglog_distinct
   <aggregation-hyperloglog-distinct>` aggregation function.
 
+- Users with AL privileges can now run the following ALTER CLUSTER commands:
+  ``ALTER CLUSTER SWAP TABLE source TO target``,
+  ``ALTER CLUSTER REROUTE RETRY FAILED``,
+  ``ALTER CLUSTER GC DANGLING ARTIFACTS``.
+
 Fixes
 =====
 

@@ -50,10 +50,12 @@ import io.crate.analyze.AnalyzedDropSnapshot;
 import io.crate.analyze.AnalyzedDropTable;
 import io.crate.analyze.AnalyzedDropUser;
 import io.crate.analyze.AnalyzedDropView;
+import io.crate.analyze.AnalyzedGCDanglingArtifacts;
 import io.crate.analyze.AnalyzedInsertStatement;
 import io.crate.analyze.AnalyzedKill;
 import io.crate.analyze.AnalyzedPrivileges;
 import io.crate.analyze.AnalyzedRefreshTable;
+import io.crate.analyze.AnalyzedRerouteRetryFailed;
 import io.crate.analyze.AnalyzedResetStatement;
 import io.crate.analyze.AnalyzedRestoreSnapshot;
 import io.crate.analyze.AnalyzedSetSessionAuthorizationStatement;
@@ -62,6 +64,7 @@ import io.crate.analyze.AnalyzedSetTransaction;
 import io.crate.analyze.AnalyzedShowCreateTable;
 import io.crate.analyze.AnalyzedStatement;
 import io.crate.analyze.AnalyzedStatementVisitor;
+import io.crate.analyze.AnalyzedSwapTable;
 import io.crate.analyze.AnalyzedUpdateStatement;
 import io.crate.analyze.CreateViewStmt;
 import io.crate.analyze.ExplainAnalyzedStatement;
@@ -248,6 +251,39 @@ public final class AccessControlImpl implements AccessControl {
         @Override
         protected Void visitAnalyzedStatement(AnalyzedStatement analyzedStatement, User user) {
             throwRequiresSuperUserPermission(user.name());
+            return null;
+        }
+
+        @Override
+        public Void visitSwapTable(AnalyzedSwapTable swapTable, User user) {
+            Privileges.ensureUserHasPrivilege(
+                Privilege.Type.AL,
+                Privilege.Clazz.CLUSTER,
+                null,
+                user,
+                defaultSchema);
+            return null;
+        }
+
+        @Override
+        public Void visitGCDanglingArtifacts(AnalyzedGCDanglingArtifacts gcDanglingArtifacts, User user) {
+            Privileges.ensureUserHasPrivilege(
+                Privilege.Type.AL,
+                Privilege.Clazz.CLUSTER,
+                null,
+                user,
+                defaultSchema);
+            return null;
+        }
+
+        @Override
+        public Void visitRerouteRetryFailedStatement(AnalyzedRerouteRetryFailed rerouteRetryFailed, User user) {
+            Privileges.ensureUserHasPrivilege(
+                Privilege.Type.AL,
+                Privilege.Clazz.CLUSTER,
+                null,
+                user,
+                defaultSchema);
             return null;
         }
 
