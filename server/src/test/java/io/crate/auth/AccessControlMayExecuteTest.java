@@ -43,6 +43,7 @@ import org.elasticsearch.cluster.metadata.RepositoryMetadata;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.test.ClusterServiceUtils;
 import org.hamcrest.Matcher;
+import org.hamcrest.core.Is;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -475,6 +476,24 @@ public class AccessControlMayExecuteTest extends CrateDummyClusterServiceUnitTes
         expectedException.expectMessage("User \"normal\" is not authorized to execute the statement. " +
                                         "Superuser permissions are required");
         analyze("alter cluster decommission 'n1'");
+    }
+
+    @Test
+    public void test_alter_cluster_reroute_retry_works_for_normal_user_with_AL_privileges() {
+        analyze("alter cluster reroute retry failed", user);
+        assertAskedForCluster(Privilege.Type.AL);
+    }
+
+    @Test
+    public void test_alter_cluster_gc_dangling_artifacts_works_for_normal_user_with_AL_privileges() {
+        analyze("alter cluster gc dangling artifacts", user);
+        assertAskedForCluster(Privilege.Type.AL);
+    }
+
+    @Test
+    public void test_alter_cluster_swap_table_works_for_normal_user_with_AL_privileges() {
+        analyze("alter cluster swap table doc.t1 to doc.t2 with (drop_source = true)", user);
+        assertAskedForCluster(Privilege.Type.AL);
     }
 
     @Test

@@ -309,17 +309,6 @@ public class PrivilegesIntegrationTest extends BaseUsersIntegrationTest {
     }
 
     @Test
-    public void test_alter_cluster_swap_table_works_for_nonsueruser() {
-        executeAsSuperuser("create table doc.t1 (x int)");
-        executeAsSuperuser("create table doc.t2 (x int)");
-
-        // User gets AL privileges and can swap tables
-        executeAsSuperuser("grant AL to " + TEST_USERNAME);
-        executeAs("alter cluster swap table doc.t1 to doc.t2 with (drop_source = true)", TEST_USERNAME);
-        assertThat(response.rowCount(), is (1L));
-    }
-
-    @Test
     public void testRenamePartitionedTableTransfersPrivilegesToNewTable() {
         executeAsSuperuser("create table t1 (x int) partitioned by (x) clustered into 1 shards with (number_of_replicas = 0)");
         executeAsSuperuser("insert into t1 values (1)");
@@ -403,23 +392,15 @@ public class PrivilegesIntegrationTest extends BaseUsersIntegrationTest {
     }
 
     @Test
-    public void test_alter_cluster_reroute_retry_works_for_superuser_and_normal_user() {
+    public void testAlterClusterRerouteRetryFailedPrivileges() {
         executeAsSuperuser("alter cluster reroute retry failed");
         assertThat(response.rowCount(), is (0L));
-        executeAsSuperuser("grant AL to " + TEST_USERNAME);
 
-        executeAs("alter cluster reroute retry failed", TEST_USERNAME);
-        assertThat(response.rowCount(), is (0L));
-    }
-
-    @Test
-    public void test_alter_cluster_gc_dangling_artifacts_works_for_superuser_and_normal_user() {
-        executeAsSuperuser("alter cluster gc dangling artifacts");
-        assertThat(response.rowCount(), is (1L));
-        executeAsSuperuser("grant AL to " + TEST_USERNAME);
-
-        executeAs("alter cluster gc dangling artifacts", TEST_USERNAME);
-        assertThat(response.rowCount(), is (1L));
+        assertThrows(() -> executeAsNormalUser("alter cluster reroute retry failed"),
+                     isSQLError(containsString("User \"normal\" is not authorized to execute the statement"),
+                                INTERNAL_ERROR,
+                                UNAUTHORIZED,
+                                4010));
     }
 
     @Test
